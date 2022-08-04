@@ -8,34 +8,35 @@
 #include <memory>
 #include <unordered_map>
 
-class JSONBase;
-using JSONBasePtr = std::shared_ptr<JSONBase>;
+class IJSON;
+using JSONPtr = std::shared_ptr<IJSON>;
 
 template <typename T>
 class JSONObject;
 
-class JSONBase
-    : private std::enable_shared_from_this<JSONBase>
+class IJSON
 {
 public:
-    JSONBase(JSONBasePtr parent)
+    virtual ~IJSON() {}
+};
+
+template <typename T>
+class JSONBase
+    : public std::enable_shared_from_this<T>
+    , public IJSON
+{
+public:
+    JSONBase(JSONPtr parent)
         : m_parent(parent)
     {
 
     }
 
-    JSONBasePtr ptr()
-    {
-        return shared_from_this();
-    }
-
-    virtual ~JSONBase() {}
-
 protected:
-    std::weak_ptr<JSONBase> m_parent;
+    std::weak_ptr<JSONBase<T>> m_parent;
 };
 
-using JSONTypes = TypesPacker<int64_t, double, std::string, JSONBasePtr, std::monostate>;
+using JSONTypes = TypesPacker<int64_t, double, std::string, JSONPtr, std::monostate>;
 
 class JSONValue : public VariantValue<JSONTypes::Apply>
 {
@@ -96,16 +97,17 @@ public:
 
 template <typename T>
 class JSONKey
-    : public JSONBase
+    : public JSONBase<JSONKey<T>>
     , public JSONAdders<JSONKey<T>>
     , public std::enable_shared_from_this<JSONKey<T>>
 {
+    using ParentPtr = std::shared_ptr<T>;
     using JSONKeyPtr = std::shared_ptr<JSONKey<T>>;
     using std::enable_shared_from_this<JSONKey<T>>::shared_from_this;
 public:
-    static JSONKeyPtr create(JSONBasePtr parent)
+    static JSONKeyPtr create(ParentPtr parent)
     {
-        return (new JSONKey<T>(parent))->shared_from_this();
+        return std::make_shared<JSONKey<T>>(parent)->shared_from_this();
     }
 
     void addValue(JSONValue value)
@@ -120,26 +122,39 @@ public:
 
     std::shared_ptr<T> reset()
     {
-        static_cast<T*>(m_parent.lock().get())->enable_shared_from_this();
+        static_cast<T*>(JSONBase<JSONKey<T>>::m_parent.lock().get())->enable_shared_from_this();
     }
 
 private:
-    JSONKey(JSONBasePtr parent)
-        : JSONBase(parent)
+    JSONKey(JSONPtr parent)
+        : JSONBase<JSONKey<T>>(parent)
     {}
 };
 
 template <typename T>
 class JSONObject
-    : public JSONBase
+    : public JSONBase<JSONObject<T>>
     , public std::enable_shared_from_this<JSONObject<T>>
 {
+    using ParentPtr = std::shared_ptr<T>;
     using JSONObjectPtr = std::shared_ptr<JSONObject>;
     using std::enable_shared_from_this<JSONObject<T>>::shared_from_this;
 public:
-    static JSONObjectPtr create(JSONBasePtr parent = nullptr)
+    static JSONObjectPtr create(ParentPtr parent = nullptr)
     {
         return (new JSONObject<T>(parent))->shared_from_this();
+    }
+
+    std::shared_ptr<JSONKey<JSONObject<T>>> key(const std::string& key)
+    {
+        auto obj = (new JSONKey<JSONObject<T>>())->shared_from_this();
+        auto [iter, ok] =
+            m_fields.emplace(key, obj);
+        if (!ok)
+        {
+            throw std::runtime_error("Cannot create key!");
+        }
+        return *iter;
     }
 
 //    JSONObjectPtr beginObject(const std::string& key)
@@ -158,8 +173,8 @@ public:
     }
 
 private:
-    JSONObject(JSONBasePtr parent)
-        : JSONBase(parent)
+    JSONObject(JSONPtr parent)
+        : JSONBase<JSONObject<T>>(parent)
     {}
 
 private:
