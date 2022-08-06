@@ -1,10 +1,9 @@
-cmake_minimum_required(VERSION 3.5)
-
-project(conoser LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.19)
+project(concept_of_serialization LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(conoser main.cpp
-    json.hpp
-    type_utils.hpp)
+add_subdirectory(conoser)
+add_subdirectory(test)
+
